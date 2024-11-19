@@ -2,7 +2,7 @@ package packets
 
 import "encoding/binary"
 
-// get the header packet length
+// returns the first 2 bytes from the header
 func extractPacketLength(data []byte) uint16 {
 	pktLength := binary.BigEndian.Uint16(data[0:2])
 	return pktLength
