@@ -2,6 +2,7 @@ package packets_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"tcpserver/internal/packets"
 	"testing"
 
@@ -88,4 +89,24 @@ func TestPacketEncoderFormat(t *testing.T) {
 
 	require.NoError(t, err, "Encoder() error: %v")
 	require.Equal(t, expected, encoded, "should have same encoding format as expected")
+}
+
+func TestPacketFromReader(t *testing.T) {
+	data := []byte{
+		0x00, 0x06,
+		0x00,
+		'P', 'A', 'C', 'K', 'E', 'T',
+	}
+
+	b := []byte("PACKET")
+
+	pktSize := binary.BigEndian.Uint16(data)
+
+	reader := bytes.NewReader(data)
+
+	pkt, err := packets.PacketFromReader(reader)
+
+	require.NoError(t, err, "packet reader error")
+	require.Equal(t, int(pktSize), int(pkt.Len()))
+	require.Equal(t, b, pkt.DataBytes(), "should have same data bytes")
 }

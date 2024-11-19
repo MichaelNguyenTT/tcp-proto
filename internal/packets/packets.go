@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	HEADER_SIZE     = 3
-	MAX_PACKET_SIZE = 1024
+	HEADER_SIZE            = 3
+	MAX_PACKET_SIZE        = 1024
+	PACKET_LENGTH_POSITION = 0
 )
 
 type PacketType uint8
@@ -35,6 +36,9 @@ var (
 
 	ErrInvalidHeader = fmt.Errorf("invalid packet header")
 	ErrInvalidType   = fmt.Errorf("invalid packet type")
+
+	ErrIncompleteHeader = fmt.Errorf("incomplete header read")
+	ErrIncompleteData   = fmt.Errorf("incomplete data read")
 )
 
 // packet protocol structure
@@ -71,8 +75,16 @@ func (p *Packet) createPacketBuffer() []byte {
 	return buf
 }
 
-func (p *Packet) getPacketDataLength() int {
-	return p.len - HEADER_SIZE
+func (p *Packet) Len() uint16 {
+	return binary.BigEndian.Uint16(p.pkt[PACKET_LENGTH_POSITION:])
+}
+
+func (p *Packet) DataBytes() []byte {
+	return p.pkt[HEADER_SIZE:]
+}
+
+func (p *Packet) ToString() string {
+	return fmt.Sprintf("Packet length: %d\n Data: %s\n", p.len, p.pkt[HEADER_SIZE:])
 }
 
 func (p *Packet) Encoder() ([]byte, error) {
@@ -82,7 +94,7 @@ func (p *Packet) Encoder() ([]byte, error) {
 		return nil, ErrPktExceededMax
 	}
 
-	dataLeng := p.getPacketDataLength()
+	dataLeng := p.len - HEADER_SIZE
 
 	binary.BigEndian.PutUint16(pkt[0:2], uint16(dataLeng))
 	pkt[2] = byte(p.PacketType())
@@ -103,4 +115,66 @@ func (p *Packet) WritePacket(w io.Writer) (int, error) {
 	}
 
 	return n, nil
+}
+
+func PacketFromReader(reader io.Reader) (*Packet, error) {
+	header := make([]byte, HEADER_SIZE)
+	n, err := reader.Read(header)
+	if err != nil {
+		return nil, err
+	}
+
+	if n < HEADER_SIZE {
+		return nil, ErrIncompleteHeader
+	}
+
+	pktSize := extractPacketLength(header)
+
+	fullPkt := int(pktSize) + HEADER_SIZE
+	if fullPkt > MAX_PACKET_SIZE {
+		return nil, ErrPktExceededMax
+	}
+
+	// create buffer for complete packet
+	pktBuf := make([]byte, fullPkt, fullPkt)
+
+	copy(pktBuf, header) // copy header
+
+	data := pktBuf[HEADER_SIZE:]
+	n, err = reader.Read(data)
+	if err != nil {
+		return nil, err
+	}
+
+	if n < int(pktSize) {
+		return nil, ErrIncompleteData
+	}
+
+	pkt := createPacketFromRawBytes(pktBuf)
+	return &pkt, nil
+}
+
+// get the header packet length
+func extractPacketLength(data []byte) uint16 {
+	pktLength := binary.BigEndian.Uint16(data[0:2])
+	return pktLength
+}
+
+func createPacketFromRawBytes(data []byte) Packet {
+	// need some sort of assertions for simulation testing
+	// length := len(data) - HEADER_SIZE
+	// pktLen := extractPacketLength(data)
+
+	return Packet{
+		pkt: data,
+		len: len(data),
+	}
+}
+
+func copyPacketData[T any](to, from []T) int {
+	return copy(to, from)
+}
+
+func removePacketData[T any](to, from []T) int {
+	return copy(to, from)
 }
